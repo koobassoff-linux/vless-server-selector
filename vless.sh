@@ -45,7 +45,7 @@ parse_vless_strings() {
     done
     output_data=$(echo "${json_array[*]}" | sed 's/}\s*{/},{/g')
 
-    echo "[${output_data[*]}]" | tee file.out
+    echo "[${output_data[*]}]"
 }
 
 get_env() {
