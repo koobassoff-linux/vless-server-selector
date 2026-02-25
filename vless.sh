@@ -37,6 +37,9 @@ parse_vless_strings() {
                     }
                 }
             }
+            if ($6 != "") {
+                json = json ",\"fragment\":\"" $6 "\""
+            }
             json = json "}"
             print json
         }')
