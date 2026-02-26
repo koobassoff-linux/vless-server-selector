@@ -23,7 +23,7 @@ parse_vless_strings() {
             gsub ("/", "", uuid)
             host = $3
 
-            cmd = "ping -c 2 " host " | grep 'rtt' "
+            cmd = "ping -c 2 " host " 2>/dev/null | grep 'rtt' "
             cmd | getline result
             close(cmd)
 
@@ -61,17 +61,24 @@ get_env_section() {
 }
 
 main () {
-    local readonly MY_VLESS_UID="${VLESS_UID}"  # from env?
+    local readonly MY_DATA_DIR="${DATA_DIR:-.}"
 
-    #curl -qs "https://proxyliberty.ru/connection/tunnel/${MY_VLESS_UID}" | base64 -d > "${MY_DATA_DIR}/vless-decoded.txt"
-    #curl -qs "https://proxyliberty.ru/connection/subs/${MY_VLESS_UID}" | base64 -d >> "${MY_DATA_DIR}/vless-decoded.txt"
-    #curl -qs "https://proxyliberty.ru/connection/test_proxies_subs/${MY_VLESS_UID}" | base64 -d >> "${MY_DATA_DIR}/vless-decoded.txt"
+    if [[ ! -f "${MY_DATA_DIR}/vless-decoded.txt" ]]; then
+        if [[ -z "${VLESS_UID}" ]]; then
+            echo "error: specify VLESS_UID"
+            exit 1
+        fi
+        curl -qs "https://proxyliberty.ru/connection/tunnel/${VLESS_UID}" | base64 -d > "${MY_DATA_DIR}/vless-decoded.txt"
+        curl -qs "https://proxyliberty.ru/connection/subs/${VLESS_UID}" | base64 -d >> "${MY_DATA_DIR}/vless-decoded.txt"
+        curl -qs "https://proxyliberty.ru/connection/test_proxies_subs/${VLESS_UID}" | base64 -d >> "${MY_DATA_DIR}/vless-decoded.txt"
+    fi
 
-    local readonly MY_DATA_DIR="."  # from env?
     read_file_from_cache "${MY_DATA_DIR}/vless-decoded.txt"
 
     local json=$(parse_vless_strings "${FILE_CACHE[@]}")
-    echo "${json}" | jq -cr '[.[] | {index: .i, host: .host, ping: .ping}] | to_entries[] | "\(.key) \(.value.host) \(.value.ping)"'
+    echo "${json}" | jq -cr '[.[] | {index: .i, host: .host, ping: .ping, fragment: .fragment}] | to_entries[]
+        | "\(.key) \(.value.host) \(.value.fragment) \(.value.ping)"'\
+        | column -t
 
     echo "select server:"
     local INDEX
@@ -88,7 +95,8 @@ main () {
         argRP=${REMOTE_PORT} argSN=${SERVER_NAME} argSID=${SHORT_ID}")
     local readonly CMD_CONTAINER_RESTART=$(echo "; :foreach container in=[/container find] do={/container stop \$container; /container start \$container}")
 
-    # ssh -l admin 192.168.88.1 -p 1946 "${CMD_ENV_SET}${CMD_CONTAINER_RESTART}"
+echo "send ${CMD_ENV_SET} to mikrotik"
+    #ssh -l admin 192.168.88.1 -p 1946 "${CMD_ENV_SET}" #${CMD_CONTAINER_RESTART}"
 }
 
 
