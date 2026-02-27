@@ -22,8 +22,8 @@ parse_vless_strings() {
             uuid = $2
             gsub ("/", "", uuid)
             host = $3
-            printf("Processing %s...\r", host) | "cat>&2"
-            cmd = "ping -c 2 " host " 2>/dev/null | grep 'rtt' "
+            printf("Processing %s.......\r", host) | "cat>&2"
+            cmd = "ping -c 3 " host " 2>/dev/null | grep 'rtt' "
             cmd | getline result
             close(cmd)
             if (result == "") {
@@ -76,8 +76,10 @@ main () {
         echo "getting vless subs"
         curl -qs "https://proxyliberty.ru/connection/tunnel/${VLESS_UID}" | base64 -d > "${MY_DATA_DIR}/vless-decoded.txt"
         echo "getting vless-obhod subs"
+        echo -e "\n" >> "${MY_DATA_DIR}/vless-decoded.txt"
         curl -qs "https://proxyliberty.ru/connection/subs/${VLESS_UID}" | base64 -d >> "${MY_DATA_DIR}/vless-decoded.txt"
         echo "getting white-lists subs"
+        echo -e "\n" >> "${MY_DATA_DIR}/vless-decoded.txt"
         curl -qs "https://proxyliberty.ru/connection/test_proxies_subs/${VLESS_UID}" | base64 -d >> "${MY_DATA_DIR}/vless-decoded.txt"
     else
         echo "using cache from ${MY_DATA_DIR}/vless-decoded.txt"
