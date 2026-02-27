@@ -81,6 +81,8 @@ main () {
         echo "getting white-lists subs"
         echo -e "\n" >> "${MY_DATA_DIR}/vless-decoded.txt"
         curl -qs "https://proxyliberty.ru/connection/test_proxies_subs/${VLESS_UID}" | base64 -d >> "${MY_DATA_DIR}/vless-decoded.txt"
+
+        sed -i '/^$/d' "${MY_DATA_DIR}/vless-decoded.txt"
     else
         echo "using cache from ${MY_DATA_DIR}/vless-decoded.txt"
     fi
