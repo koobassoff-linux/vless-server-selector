@@ -26,7 +26,9 @@ parse_vless_strings() {
             cmd = "ping -c 2 " host " 2>/dev/null | grep 'rtt' "
             cmd | getline result
             close(cmd)
-
+            if (result == "") {
+                result = "N/A"
+            }
             json = "{\"uuid\":\"" uuid "\",\"host\":\"" host "\",\"port\":\"" $4 "\",\"ping\":\"" result "\""
             if (length($5) > 0) {
                 split($5, params, "&")
@@ -95,8 +97,7 @@ main () {
         argRP=${REMOTE_PORT} argSN=${SERVER_NAME} argSID=${SHORT_ID}")
     local readonly CMD_CONTAINER_RESTART=$(echo "; :foreach container in=[/container find] do={/container stop \$container; /container start \$container}")
 
-echo "send ${CMD_ENV_SET} to mikrotik"
-    #ssh -l admin 192.168.88.1 -p 1946 "${CMD_ENV_SET}" #${CMD_CONTAINER_RESTART}"
+    ssh -l admin 192.168.88.1 -p 1946 "${CMD_ENV_SET}" #${CMD_CONTAINER_RESTART}"
 }
 
 
