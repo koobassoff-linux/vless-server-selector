@@ -23,11 +23,11 @@ parse_vless_strings() {
             gsub ("/", "", uuid)
             host = $3
             printf("Processing %s.......\r", host) | "cat>&2"
-            cmd = "ping -c 3 " host " 2>/dev/null | grep 'rtt' "
+            cmd = "ping -c 1 " host " 2>/dev/null | grep 'rtt' "
             cmd | getline result
             close(cmd)
             if (result == "") {
-                result_avg = "---N/A---"
+                result_avg = "99999999"
             } else {
                 split(result, result_parts, "/")
                 result_avg = result_parts[6]
@@ -56,13 +56,12 @@ parse_vless_strings() {
     echo "[${output_data[*]}]"
 }
 
-get_env() {
+get_env_from_array() {
      echo "${1}" | jq -r .["${2}"]."${3}"
 }
 
-#get_env_section "${json}" 0
-get_env_section() {
-     echo "${1}" | jq -r .["${2}"]
+get_env() {
+     echo "${1}" | jq -r ."${2}"
 }
 
 main () {
@@ -77,7 +76,6 @@ main () {
         curl -qs "https://proxyliberty.ru/connection/tunnel/${VLESS_UID}" | base64 -d > "${MY_DATA_DIR}/vless-decoded.txt"
         echo "getting vless-obhod subs"
         echo -e "\n" >> "${MY_DATA_DIR}/vless-decoded.txt"
-        curl -qs "https://proxyliberty.ru/connection/subs/${VLESS_UID}" | base64 -d >> "${MY_DATA_DIR}/vless-decoded.txt"
         echo "getting white-lists subs"
         echo -e "\n" >> "${MY_DATA_DIR}/vless-decoded.txt"
         curl -qs "https://proxyliberty.ru/connection/test_proxies_subs/${VLESS_UID}" | base64 -d >> "${MY_DATA_DIR}/vless-decoded.txt"
@@ -94,16 +92,35 @@ main () {
         | "\(.key) \(.value.host) \(.value.fragment) \(.value.ping)"'\
         | column -t
 
-    echo "select server:"
+    echo "select server, send 'a' for fastest:"
     local INDEX
     read INDEX
+    if [[ "${INDEX}" -eq "a" ]]; then
+        local readonly FASTEST=$(echo "${json}" | jq -r 'sort_by(.ping)'.[0])
+        local readonly REMOTE_ADDRESS=$(get_env "${FASTEST}" "host")
 
-    local readonly REMOTE_ADDRESS=$(get_env "${json}" "${INDEX}" "host")
-    local readonly REMOTE_PORT=$(get_env "${json}" "${INDEX}" "port")
-    local readonly ID=$(get_env "${json}" "${INDEX}" "uuid")
-    local readonly SERVER_NAME=$(get_env "${json}" "${INDEX}" "sni")
-    local readonly SHORT_ID=$(get_env "${json}" "${INDEX}" "sid")
-    local readonly PUBLIC_KEY=$(get_env "${json}" "${INDEX}" "pbk")
+        local readonly REMOTE_PORT=$(   get_env    "${FASTEST}" "port")
+        local readonly ID=$(            get_env    "${FASTEST}" "uuid")
+        local readonly SERVER_NAME=$(   get_env    "${FASTEST}" "sni")
+        local readonly SHORT_ID=$(      get_env    "${FASTEST}" "sid")
+        local readonly PUBLIC_KEY=$(    get_env    "${FASTEST}" "pbk")
+
+        ping -c5 "${REMOTE_ADDRESS}"
+
+        echo "sure?"
+        local YEP
+        read YEP
+        if [[ "${YEP}" != "y" ]]; then
+            exit
+        fi
+    else
+        local readonly REMOTE_ADDRESS=$(    get_env_from_array "${json}" "${INDEX}" "host")
+        local readonly REMOTE_PORT=$(       get_env_from_array "${json}" "${INDEX}" "port")
+        local readonly ID=$(                get_env_from_array "${json}" "${INDEX}" "uuid")
+        local readonly SERVER_NAME=$(       get_env_from_array "${json}" "${INDEX}" "sni")
+        local readonly SHORT_ID=$(          get_env_from_array "${json}" "${INDEX}" "sid")
+        local readonly PUBLIC_KEY=$(        get_env_from_array "${json}" "${INDEX}" "pbk")
+    fi
 
     local readonly CMD_ENV_SET=$(echo "\$updateVlessSettings argArea="vless1" argID=${ID} argPbk=${PUBLIC_KEY} argRA=${REMOTE_ADDRESS}\
         argRP=${REMOTE_PORT} argSN=${SERVER_NAME} argSID=${SHORT_ID}")
