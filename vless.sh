@@ -22,14 +22,17 @@ parse_vless_strings() {
             uuid = $2
             gsub ("/", "", uuid)
             host = $3
-
+            printf("Processing %s...\r", host) | "cat>&2"
             cmd = "ping -c 2 " host " 2>/dev/null | grep 'rtt' "
             cmd | getline result
             close(cmd)
             if (result == "") {
-                result = "N/A"
+                result_avg = "---N/A---"
+            } else {
+                split(result, result_parts, "/")
+                result_avg = result_parts[6]
             }
-            json = "{\"uuid\":\"" uuid "\",\"host\":\"" host "\",\"port\":\"" $4 "\",\"ping\":\"" result "\""
+            json = "{\"uuid\":\"" uuid "\",\"host\":\"" host "\",\"port\":\"" $4 "\",\"ping\":\""result_avg "\""
             if (length($5) > 0) {
                 split($5, params, "&")
                 for (i in params) {
@@ -70,9 +73,14 @@ main () {
             echo "error: specify VLESS_UID"
             exit 1
         fi
+        echo "getting vless subs"
         curl -qs "https://proxyliberty.ru/connection/tunnel/${VLESS_UID}" | base64 -d > "${MY_DATA_DIR}/vless-decoded.txt"
+        echo "getting vless-obhod subs"
         curl -qs "https://proxyliberty.ru/connection/subs/${VLESS_UID}" | base64 -d >> "${MY_DATA_DIR}/vless-decoded.txt"
+        echo "getting white-lists subs"
         curl -qs "https://proxyliberty.ru/connection/test_proxies_subs/${VLESS_UID}" | base64 -d >> "${MY_DATA_DIR}/vless-decoded.txt"
+    else
+        echo "using cache from ${MY_DATA_DIR}/vless-decoded.txt"
     fi
 
     read_file_from_cache "${MY_DATA_DIR}/vless-decoded.txt"
