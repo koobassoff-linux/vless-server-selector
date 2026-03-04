@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-readonly FILE_CACHE_NAME="vless-decoded.txt"
-readonly SUBS_BASE_URL="proxyliberty.ru"
+readonly SUBS_BASE_URL="mirror.proxyliberty.ru"
+readonly FILE_CACHE_NAME="${SUBS_BASE_URL}-decoded.txt"
+readonly CURL_TIMEOUT=" --connect-timeout 5 --max-time 600 "
 
 set -a FILE_CACHE
 read_file_from_cache() {
@@ -74,14 +75,15 @@ main () {
             echo "error: specify VLESS_UID"
             exit 1
         fi
+
         echo "getting vless subs"
-        curl -qs "https://${SUBS_BASE_URL}/connection/subs/${VLESS_UID}" | base64 -d > "${MY_DATA_DIR}/${FILE_CACHE_NAME}"
+        curl -qs "${CURL_TIMEOUT}" "https://${SUBS_BASE_URL}/connection/subs/${VLESS_UID}" | base64 -d > "${MY_DATA_DIR}/${FILE_CACHE_NAME}"
         echo "getting vless-obhod subs"
         echo -e "\n" >> "${MY_DATA_DIR}/${FILE_CACHE_NAME}"
-        curl -qs "https://${SUBS_BASE_URL}/connection/tunnel/${VLESS_UID}" | base64 -d > "${MY_DATA_DIR}/${FILE_CACHE_NAME}"
+        curl -qs "${CURL_TIMEOUT}" "https://${SUBS_BASE_URL}/connection/tunnel/${VLESS_UID}" | base64 -d > "${MY_DATA_DIR}/${FILE_CACHE_NAME}"
         echo "getting white-lists subs"
         echo -e "\n" >> "${MY_DATA_DIR}/${FILE_CACHE_NAME}"
-        curl -qs "https://${SUBS_BASE_URL}/connection/test_proxies_subs/${VLESS_UID}" | base64 -d >> "${MY_DATA_DIR}/${FILE_CACHE_NAME}"
+        curl -qs "${CURL_TIMEOUT}" "https://${SUBS_BASE_URL}/connection/test_proxies_subs/${VLESS_UID}" | base64 -d >> "${MY_DATA_DIR}/${FILE_CACHE_NAME}"
 
         sed -i '/^$/d' "${MY_DATA_DIR}/${FILE_CACHE_NAME}"
     else
