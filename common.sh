@@ -4,7 +4,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/once.sh"
 once "${BASH_SOURCE[0]}"
 
 check_debug () {
-    if [[ -n "${USE_DEBUG}" && "${USE_DEBUG}" != "0" ]]; then
+    if [[ -n "${USE_DEBUG:-}" && "${USE_DEBUG:-}" != "0" ]]; then
         set -o xtrace
     else
         set +x
@@ -14,11 +14,11 @@ check_debug () {
 check_debug
 
 exit_if_not_root () {
-    local USER
-    USER=$(whoami)
+    local user_name
+    user_name="$(id -un)"
 
-    if [[ ${USER} != "root" ]] ; then
-        printf "use sudo, Luke!\n"
+    if [[ ${user_name} != "root" ]] ; then
+        printf "use sudo, Luke!\n" >&2
         exit 1
     fi
 }

@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
+set -eu
 
-source common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 #usage: asn-get.sh [domain.com][...]
 
 while [ "$#" -gt 0 ]; do
 	URL="${1}"
 
-	IP=$(resolveip -s "${URL}")
+	if ! IP=$(resolveip -s "${URL}"); then
+		echo "resolve error: ${URL}" >&2
+		shift
+		continue
+	fi
 
 	if ! DESCR=$(curl -sL "ip.guide/${IP}"); then
-		echo "ip.guide error"
+		echo "ip.guide error" >&2
 		shift
 		continue
 	fi
@@ -18,4 +23,3 @@ while [ "$#" -gt 0 ]; do
 
 	shift
 done
-
