@@ -1,8 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source "$(dirname "${BASH_SOURCE[0]}")/secret.sh"
-source "$(dirname "${BASH_SOURCE[0]}")/platform.sh"
+declare SCRIPT_DIR
+SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
+readonly SCRIPT_DIR
+
+# secrets live outside the repo; see secret.sh.example for the template
+declare SECRET_FILE="${VLESS_SECRET_PATH:-${HOME}/.config/vless/secret.sh}"
+if [[ ! -f "${SECRET_FILE}" ]]; then
+    echo "error: no secret file at ${SECRET_FILE}" >&2
+    echo "       copy secret.sh.example from the repo there and fill in values" >&2
+    echo "       (or point VLESS_SECRET_PATH=<path> at it)" >&2
+    exit 1
+fi
+# shellcheck source=/dev/null  # path is runtime-provided (VLESS_SECRET_PATH)
+source "${SECRET_FILE}"
+source "${SCRIPT_DIR}/platform.sh"
 
 require_cmds curl jq awk base64 column sshpass
 
@@ -35,9 +48,6 @@ validate_secrets() {
 validate_secrets
 
 readonly CURL_OPTS=(-fsS --connect-timeout 5 --max-time 30)
-declare SCRIPT_DIR
-SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
-declare -r SCRIPT_DIR
 
 declare -a FILE_CACHE JSON_ARRAY
 declare SUBS_NAME="" SUBS_URL=""
