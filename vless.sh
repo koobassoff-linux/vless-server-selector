@@ -62,6 +62,8 @@ select_subscription() {
             echo "error: unknown subscription '${SUBS}'" >&2
             exit 1
         fi
+    elif (( ${#SUBS_LIST[@]} == 1 )); then
+        entry="${SUBS_LIST[0]}"
     elif (( HAVE_FZF )); then
         entry=$(printf '%s\n' "${SUBS_LIST[@]}" | FZF_DEFAULT_OPTS="" FZF_DEFAULT_OPTS_FILE="" fzf --sync \
             --delimiter='|' --with-nth=1 --header 'subscription' --bind='start:last') \
