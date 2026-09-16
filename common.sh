@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+source "$(dirname "${BASH_SOURCE[0]}")/once.sh"
+once "${BASH_SOURCE[0]}"
+
 check_debug () {
     if [[ -n "${USE_DEBUG}" && "${USE_DEBUG}" != "0" ]]; then
         set -o xtrace

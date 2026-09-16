@@ -2,6 +2,9 @@
 # shellcheck disable=SC2034  # variables are consumed by the sourcing script
 # Platform-dependent knobs (Linux/macOS). Source this file, do not execute it.
 
+source "$(dirname "${BASH_SOURCE[0]}")/once.sh"
+once "${BASH_SOURCE[0]}"
+
 PLATFORM_OS=$(uname -s)
 
 case "${PLATFORM_OS}" in
