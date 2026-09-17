@@ -7,43 +7,11 @@ readonly SCRIPT_DIR
 
 source "${SCRIPT_DIR}/load-secret.sh"
 source "${SCRIPT_DIR}/platform.sh"
+source "${SCRIPT_DIR}/vless-lib.sh"
 
 require_cmds curl jq awk base64 column sshpass
 
-validate_secrets() {
-    # fail fast on any bad value from secret.sh before touching the network
-    local entry name url
-
-    if [[ -z "${SSH_PASS}" ]]; then
-        echo "error: SSH_PASS is empty (check secret.sh)" >&2
-        exit 1
-    fi
-    if ! valid_host "${ROUTER_HOST}" || ! valid_port "${ROUTER_PORT}"; then
-        echo "error: bad ROUTER_HOST/ROUTER_PORT in secret.sh" >&2
-        exit 1
-    fi
-    if [[ -z "${SUBS_LIST[*]:-}" ]]; then
-        echo "error: SUBS_LIST is empty (check secret.sh)" >&2
-        exit 1
-    fi
-    for entry in "${SUBS_LIST[@]}"; do
-        name="${entry%%|*}"
-        url="${entry#*|}"
-        if [[ "${entry}" != *"|"* ]] || ! [[ "${name}" =~ ${NAME_RE} ]] || ! valid_url "${url}"; then
-            echo "error: bad SUBS_LIST entry '${entry}' (expected 'name|url', name: [A-Za-z0-9._-])" >&2
-            exit 1
-        fi
-    done
-}
-
 validate_secrets
-
-readonly CURL_OPTS=(-fsS --connect-timeout 5 --max-time 30)
-
-declare -a FILE_CACHE JSON_ARRAY
-declare SUBS_NAME="" SUBS_URL=""
-# filled by choose_server()
-declare REMOTE_ADDRESS="" REMOTE_PORT="" ID="" SERVER_NAME="" SHORT_ID="" PUBLIC_KEY=""
 
 select_subscription() {
     # fills globals SUBS_NAME SUBS_URL; SUBS="name" env skips the prompt
@@ -51,20 +19,14 @@ select_subscription() {
     local entry=""
 
     if [[ -n "${SUBS:-}" ]]; then
-        local line
-        for line in "${SUBS_LIST[@]}"; do
-            if [[ "${line%%|*}" == "${SUBS}" ]]; then
-                entry="${line}"
-                break
-            fi
-        done
-        if [[ -z "${entry}" ]]; then
-            echo "error: unknown subscription '${SUBS}'" >&2
-            exit 1
-        fi
-    elif (( ${#SUBS_LIST[@]} == 1 )); then
-        entry="${SUBS_LIST[0]}"
-    elif (( HAVE_FZF )); then
+        resolve_subscription "${SUBS}" || exit 1
+        return 0
+    fi
+    if (( ${#SUBS_LIST[@]} == 1 )); then
+        resolve_subscription "${SUBS_LIST[0]%%|*}" || exit 1
+        return 0
+    fi
+    if (( HAVE_FZF )); then
         entry=$(printf '%s\n' "${SUBS_LIST[@]}" | FZF_DEFAULT_OPTS="" FZF_DEFAULT_OPTS_FILE="" fzf --sync \
             --delimiter='|' --with-nth=1 --header 'subscription' --bind='start:last') \
             || { echo "aborted (fzf)"; exit 130; }
@@ -87,90 +49,6 @@ select_subscription() {
 
     SUBS_NAME="${entry%%|*}"
     SUBS_URL="${entry#*|}"
-}
-
-read_file_from_cache() {
-    local file="${1}"
-
-    while IFS= read -r line || [[ -n "${line}" ]]; do
-        FILE_CACHE+=("$line")
-    done < "$file"
-}
-
-parse_vless_strings() {
-    # fills global JSON_ARRAY; no stdout output
-    local vless_string json_obj
-    JSON_ARRAY=()
-
-    for vless_string in "$@"; do
-        if [[ $vless_string != vless://* ]]; then
-            continue
-        fi
-
-        json_obj=$(echo "$vless_string" | LC_ALL=C awk -F '[@?:#]' -v pw="${PING_WAIT_SHORT}" -v rttre="${RTT_PATTERN}" -v hostre="${HOST_RE}" '
-        function esc(s) {
-            gsub(/\\/, "\\\\", s)
-            gsub(/"/, "\\\"", s)
-            return s
-        }
-        BEGIN {
-            for (i = 0; i < 256; i++) H2C[sprintf("%02X", i)] = sprintf("%c", i)
-        }
-        function urldecode(s,    i, out, c, hh) {
-            out = ""
-            for (i = 1; i <= length(s); i++) {
-                c = substr(s, i, 1)
-                hh = substr(s, i + 1, 2)
-                if (c == "%" && hh ~ /^[0-9A-Fa-f][0-9A-Fa-f]$/) {
-                    out = out H2C[toupper(hh)]
-                    i += 2
-                } else {
-                    out = out c
-                }
-            }
-            return out
-        }
-        {
-            uuid = esc(urldecode($2))
-            gsub ("/", "", uuid)
-            host = esc(urldecode($3))
-            printf("Processing %s.......\r", host) | "cat>&2"
-            result = ""
-            if (host ~ hostre) {
-                cmd = "ping -c1 " pw " " host " 2>/dev/null | grep -E \"" rttre "\" "
-                cmd | getline result
-                close(cmd)
-            }
-            if (result == "") {
-                result_avg = "99999999"
-            } else {
-                split(result, result_parts, "/")
-                result_avg = int(result_parts[5])
-            }
-            json = "{\"uuid\":\"" uuid "\",\"host\":\"" host "\",\"port\":\"" esc($4) "\",\"ping\":\""result_avg "\""
-            if (length($5) > 0) {
-                split($5, params, "&")
-                for (i in params) {
-                    split(params[i], kv, "=")
-                    if (length(kv[2]) != 0) {
-                        json = json ",\"" esc(kv[1]) "\":\"" esc(urldecode(kv[2])) "\""
-                    }
-                }
-            }
-            if ($6 != "") {
-                json = json ",\"fragment\":\"" esc(urldecode($6)) "\""
-            }
-            json = json "}"
-            print json
-        }')
-
-        [[ -n "${json_obj}" ]] && JSON_ARRAY+=("${json_obj}")
-    done
-    return 0
-}
-
-get_env_from_array() {
-     echo "${1}" | jq -r ".[${2}].${3} // empty"
 }
 
 choose_server() {
@@ -220,12 +98,7 @@ choose_server() {
             done
         fi
 
-        REMOTE_ADDRESS=$(    get_env_from_array "${json}" "${INDEX}" "host")
-        REMOTE_PORT=$(       get_env_from_array "${json}" "${INDEX}" "port")
-        ID=$(                get_env_from_array "${json}" "${INDEX}" "uuid")
-        SERVER_NAME=$(       get_env_from_array "${json}" "${INDEX}" "sni")
-        SHORT_ID=$(          get_env_from_array "${json}" "${INDEX}" "sid")
-        PUBLIC_KEY=$(        get_env_from_array "${json}" "${INDEX}" "pbk")
+        set_globals_from_json "${json}" "${INDEX}"
 
         if ping -c5 "${PING_WAIT[@]}" "${REMOTE_ADDRESS}"; then
             ping_ok=1
@@ -246,40 +119,6 @@ choose_server() {
     done
 }
 
-check_youtube() {
-    # --max-time after CURL_OPTS overrides its 30s (curl: last occurrence wins);
-    # no -L on purpose: a redirect means "not a clean youtube answer"
-    curl "${CURL_OPTS[@]}" --max-time 10 -o /dev/null "https://www.youtube.com/generate_204"
-}
-
-apply_to_router() {
-    # pushes the chosen server (globals) to the router; returns 1 on ssh failure
-    if ! valid_host "${REMOTE_ADDRESS}"; then
-        echo "error: suspicious host from subscription: '${REMOTE_ADDRESS}'" >&2
-        exit 1
-    fi
-
-    local _var _val
-    for _var in ID PUBLIC_KEY REMOTE_PORT SERVER_NAME SHORT_ID; do
-        _val="${!_var}"
-        if ! valid_param "${_val}"; then
-            echo "error: suspicious ${_var} from subscription: '${_val}'" >&2
-            exit 1
-        fi
-    done
-
-    declare -r CMD_ENV_SET="/system/script/run env_change; \$updateVlessSettings argArea=\"vless\"\
-        argID=\"${ID}\" argPbk=\"${PUBLIC_KEY}\" argRA=\"${REMOTE_ADDRESS}\" argRP=\"${REMOTE_PORT}\"\
-        argSN=\"${SERVER_NAME}\" argSID=\"${SHORT_ID}\""
-
-    declare -r CMD_CONTAINER_RESTART="; :foreach container in=[/container find] do={/container stop \$container; /container start \$container}"
-
-    if ! SSHPASS="${SSH_PASS}" sshpass -e ssh -l admin "${ROUTER_HOST}" -p "${ROUTER_PORT}" "${CMD_ENV_SET} ${CMD_CONTAINER_RESTART}"; then
-        echo "warning: router apply failed" >&2
-        return 1
-    fi
-}
-
 main () {
     declare -r MY_DATA_DIR="${DATA_DIR:-.}"
     local file_cache_name rc json count
@@ -298,28 +137,7 @@ main () {
             fi
         fi
 
-        if [[ ! -f "${MY_DATA_DIR}/${file_cache_name}" ]]; then
-
-            echo "getting vless subs"
-
-            local raw_tmp="${MY_DATA_DIR}/${file_cache_name}.raw.tmp"
-            local cache_tmp="${MY_DATA_DIR}/${file_cache_name}.tmp"
-            if curl "${CURL_OPTS[@]}" "${SUBS_URL}" -o "${raw_tmp}" && [[ -s "${raw_tmp}" ]]; then
-                # JSON array => Xray config bundle, needs the adapter; plain => base64
-                if [[ "$(head -c 1 "${raw_tmp}")" == "[" ]]; then
-                    "${SCRIPT_DIR}/sub-adapter.sh" < "${raw_tmp}" > "${cache_tmp}"
-                else
-                    base64 "${B64_D[@]}" < "${raw_tmp}" > "${cache_tmp}"
-                fi && mv "${cache_tmp}" "${MY_DATA_DIR}/${file_cache_name}"
-            fi
-            rm -f "${raw_tmp}"
-            if [[ ! -f "${MY_DATA_DIR}/${file_cache_name}" ]]; then
-                rm -f "${cache_tmp}"
-                echo "error: failed to fetch subscription" >&2
-                exit 1
-            fi
-
-        fi
+        fetch_subscription "${MY_DATA_DIR}" "${SUBS_NAME}" "${SUBS_URL}" || exit 1
 
         FILE_CACHE=()
         read_file_from_cache "${MY_DATA_DIR}/${file_cache_name}"
@@ -360,6 +178,5 @@ main () {
         fi
     done
 }
-
 
 main "${@}"
