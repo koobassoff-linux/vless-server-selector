@@ -206,7 +206,8 @@ apply_to_router() {
 
     declare CMD_CONTAINER_RESTART="; :foreach container in=[/container find] do={/container stop \$container; /container start \$container}"
 
-    if ! SSHPASS="${SSH_PASS}" sshpass -e ssh -l admin "${ROUTER_HOST}" -p "${ROUTER_PORT}" "${CMD_ENV_SET} ${CMD_CONTAINER_RESTART}"; then
+    # ConnectTimeout: never hang a cron tick waiting on a dead router
+    if ! SSHPASS="${SSH_PASS}" sshpass -e ssh -o ConnectTimeout=10 -l admin "${ROUTER_HOST}" -p "${ROUTER_PORT}" "${CMD_ENV_SET} ${CMD_CONTAINER_RESTART}"; then
         echo "warning: router apply failed" >&2
         return 1
     fi
