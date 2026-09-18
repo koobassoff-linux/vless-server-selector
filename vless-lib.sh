@@ -146,7 +146,13 @@ parse_vless_strings() {
                 for (i in params) {
                     split(params[i], kv, "=")
                     if (length(kv[2]) != 0) {
-                        json = json ",\"" esc(kv[1]) "\":\"" esc(urldecode(kv[2])) "\""
+                        # disguise params (host=, serverName=) must not
+                        # overwrite the real json fields (jq takes last key)
+                        key = kv[1]
+                        if (key == "host" || key == "uuid" || key == "port" || key == "ping" || key == "fragment") {
+                            key = "p_" key
+                        }
+                        json = json ",\"" esc(key) "\":\"" esc(urldecode(kv[2])) "\""
                     }
                 }
             }

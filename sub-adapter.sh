@@ -5,6 +5,8 @@ set -euo pipefail
 # lines, the same format the legacy base64 subscription provides.
 # Non-vless outbounds (hysteria, shadowsocks, ...) are skipped with a
 # warning; freedom/blackhole are infra outbounds and not counted.
+# vless servers that the RouterOS env schema cannot describe (anything
+# but security=reality, e.g. xhttp/grpc/ws disguises) are skipped too.
 # Duplicate servers (same address:port across bundles) are deduplicated,
 # preferring the bundle with a specific remark over the "Авто" balancer one.
 
@@ -35,6 +37,18 @@ if [[ -n "${ipv6}" ]]; then
     echo "sub-adapter: skipped IPv6 servers (unsupported by parser): ${ipv6}" >&2
 fi
 
+# the router stores six Reality knobs in container envs; anything beyond
+# tcp+reality (xhttp/grpc/ws transports, other securities) does not fit
+nonreality=$(jq -r '
+    [ .[] | .outbounds[]?
+      | select(.protocol == "vless")
+      | ((.streamSettings // {}) as $ss
+         | select(($ss.network // "tcp") != "tcp" or ($ss.security // "") != "reality")) ]
+    | length' <<<"${input}")
+if (( nonreality > 0 )); then
+    echo "sub-adapter: skipped vless servers unusable by router (not tcp+reality): ${nonreality}" >&2
+fi
+
 jq -r '
     [ .[]
       | (.remarks // "") as $rem
@@ -48,6 +62,7 @@ jq -r '
       | ( ($s[($s.network // "") + "Settings"] // {})
           + ($s.realitySettings // {})
           + ($s.tlsSettings // {}) ) as $x
+      | select((($s.network // "tcp") == "tcp") and $s.security == "reality" and (($x.publicKey // "") != ""))
       | ( { encryption: ($u.encryption // null),
             type: ($s.network // null),
             security: ($s.security // null),
